@@ -1040,23 +1040,14 @@ class VMWareHandler(SourceBase):
 
         # keep searching if no exact match was found
         else:
-
-            log.debug2(f"No exact match found. Trying to find {object_type.name} based on MAC addresses")
-
-            # on VMs vnic data is used, on physical devices pnic data is used
-            mac_source_data = vnic_data if object_type == NBVM else pnic_data
-
-            nic_macs = [x.get("mac_address") for x in mac_source_data.values()]
-
-            device_vm_object = self.get_object_based_on_macs(object_type, nic_macs)
-
-        # look for devices with same serial or asset tag
-        if object_type == NBDevice:
-
-            if device_vm_object is None and object_data.get("serial") is not None and \
-                    self.settings.match_host_by_serial is True:
-                log.debug2(f"No match found. Trying to find {object_type.name} based on serial number")
-
+            
+            # Check serial/asset tag FIRST for devices (before MAC matching)
+            if object_type == NBDevice:
+                
+                if device_vm_object is None and object_data.get("serial") is not None and \
+                        self.settings.match_host_by_serial is True:
+                    log.debug2(f"No exact match found. Trying to find {object_type.name} based on serial number")
+                    
                 device_vm_object = self.inventory.get_by_data(object_type, data={"serial": object_data.get("serial")})
 
             if device_vm_object is None and object_data.get("asset_tag") is not None:
@@ -1065,11 +1056,23 @@ class VMWareHandler(SourceBase):
                 device_vm_object = self.inventory.get_by_data(object_type,
                                                               data={"asset_tag": object_data.get("asset_tag")})
 
-        # look for VMs with same serial
-        if object_type == NBVM and device_vm_object is None and object_data.get("serial") is not None:
-            log.debug2(f"No match found. Trying to find {object_type.name} based on serial number")
-            device_vm_object = self.inventory.get_by_data(object_type, data={"serial": object_data.get("serial")})
-
+            # Check serial for VMs
+            if object_type == NBVM and device_vm_object is None and object_data.get("serial") is not None:
+                log.debug2(f"No exact match found. Trying to find {object_type.name} based on serial number")
+                device_vm_object = self.inventory.get_by_data(object_type, data={"serial": object_data.get("serial")})
+            
+            # NOW try MAC matching (fallback after serial/asset tag)
+            if device_vm_object is None:
+                log.debug2(f"No match found. Trying to find {object_type.name} based on MAC addresses")
+                
+                # on VMs vnic data is used, on physical devices pnic data is used
+                mac_source_data = vnic_data if object_type == NBVM else pnic_data
+                
+                nic_macs = [x.get("mac_address") for x in mac_source_data.values()]
+                
+                device_vm_object = self.get_object_based_on_macs(object_type, nic_macs)
+        
+        # Check if any match was found
         if device_vm_object is not None:
             log.debug2("Found a matching %s object: %s" %
                        (object_type.name, device_vm_object.get_display_name(including_second_key=True)))
