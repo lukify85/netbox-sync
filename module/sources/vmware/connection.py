@@ -493,10 +493,14 @@ class VMWareHandler(SourceBase):
 
     def get_object_based_on_macs(self, object_type, mac_list=None):
         """
-        Try to find a NetBox object based on list of MAC addresses.
+        Try to find a NetBox object (device or VM) based on list of MAC addresses.
+
+        Note: MAC address matching for physical hosts (NBDevice) can be disabled via the
+        'disable_host_mac_matching' configuration option. This is useful in environments with
+        MAC address pooling where MAC addresses are not unique identifiers.
 
         Iterate over all interfaces of this object type and compare MAC address with list of desired MAC
-        addresses. If match was found store related machine object and count every correct match.
+        addresses. If a match is found, store the related machine object and count every correct match.
 
         If exactly one machine with matching interfaces was found then this one will be returned.
 
@@ -1061,16 +1065,24 @@ class VMWareHandler(SourceBase):
                 log.debug2(f"No exact match found. Trying to find {object_type.name} based on serial number")
                 device_vm_object = self.inventory.get_by_data(object_type, data={"serial": object_data.get("serial")})
             
-            # NOW try MAC matching (fallback after serial/asset tag)
+            # Try MAC address matching (fallback after serial/asset tag)
+            # Note: Can be disabled for physical hosts via 'disable_host_mac_matching' config option
             if device_vm_object is None:
-                log.debug2(f"No match found. Trying to find {object_type.name} based on MAC addresses")
                 
-                # on VMs vnic data is used, on physical devices pnic data is used
-                mac_source_data = vnic_data if object_type == NBVM else pnic_data
-                
-                nic_macs = [x.get("mac_address") for x in mac_source_data.values()]
-                
-                device_vm_object = self.get_object_based_on_macs(object_type, nic_macs)
+                # Skip MAC matching for physical hosts if configured
+                if object_type == NBDevice and self.settings.disable_host_mac_matching is True:
+                    log.debug2(f"MAC address matching for {object_type.name} is disabled via configuration")
+                else:
+                    log.debug2(f"No match found. Trying to find {object_type.name} based on MAC addresses")
+                    
+                    # On VMs vnic data is used, on physical devices pnic data is used
+                    # This distinction is important because VMs always use MAC matching regardless
+                    # of the 'disable_host_mac_matching' setting (which only affects NBDevice)
+                    mac_source_data = vnic_data if object_type == NBVM else pnic_data
+                    
+                    nic_macs = [x.get("mac_address") for x in mac_source_data.values()]
+                    
+                    device_vm_object = self.get_object_based_on_macs(object_type, nic_macs)
         
         # Check if any match was found
         if device_vm_object is not None:

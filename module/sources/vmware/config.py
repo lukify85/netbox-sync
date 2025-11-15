@@ -202,6 +202,13 @@ class VMWareConfig(ConfigBase):
                          description="""Try to find existing host based on serial number. This can cause issues
                          with blade centers if VMWare does not report the blades serial number properly.""",
                          default_value=True),
+            ConfigOption("disable_host_mac_matching",
+                         bool,
+                         description="""Disable MAC address matching for physical hosts (NBDevice). This is useful
+                         in environments with MAC address pooling (e.g., Cisco UCS) where MAC addresses are not
+                         unique per host. When enabled, hosts will only match by name, serial, asset tag, or primary
+                         IP. MAC address matching remains enabled for VMs.""",
+                         default_value=False),
             ConfigOption("collect_hardware_asset_tag",
                          bool,
                          description="Attempt to collect asset tags from vCenter hosts",
